@@ -1,6 +1,9 @@
+require('dotenv-safe').load()
 const { connect } = require('./PokemonsApiRepository')
 const treinadoresModel = require('./TreinadoresSchema')
 const { pokemonsModel } = require('./PokemonsSchema')
+const bcrypt = require('bcryptjs')
+const jwt = require('jsonwebtoken')
 const LIMITE_NIVEL_POKEMON = 150
 
 connect()
@@ -22,8 +25,18 @@ const getById = (id) => {
   return treinadoresModel.findById(id)
 }
 
-const add = (treinador) => {
-  const novoTreinador = new treinadoresModel(treinador)
+const add = async (treinador) => {
+  const treinadorEncontrado = await treinadoresModel.findOne({ email: treinador.email })
+
+  if (treinadorEncontrado) {
+    throw new Error('Email já cadastrado')
+  }
+
+  const salt = bcrypt.genSaltSync(10)
+  const senhaCriptografada = bcrypt.hashSync(treinador.senha, salt)
+  // treinador.senha = senhaCriptografada
+
+  const novoTreinador = new treinadoresModel({...treinador, senha: senhaCriptografada}) //objeto dentro de objeto, preciso espalhar pra ta no mesmo nivel, spread faz isso
   return novoTreinador.save()
 }
 
@@ -67,19 +80,39 @@ const getPokemons = async treinadorId => {
 const updatePokemon = (treinadorId, pokemonId, pokemon) => {
   return treinadoresModel.findOneAndUpdate(
     { _id: treinadorId, "pokemons._id": pokemonId },
-    { $set: { "pokemons.$": { ...pokemon, _id: pokemonId } } },
-    { new: true }
+    { $set: { "pokemons.$": { ...pokemon, _id: pokemonId } } }, // sem usar o spread operator (...), obteremos um objeto dentro de outro (ao invés de vários atributos para alterar o pokemon)
+    { new: true } // precisamos disso para retornar uma nova instância do pokemon que encontramos, para podermos vê-lo atualizado
   )
 }
 
-const getPokemon = async (treinadorId, pokemonId) => {
+const getByPokemonId = async (treinadorId, pokemonId) => {
   const treinador = await getById(treinadorId)
-
-  const pokemon = treinador.pokemons.find(pokemon => pokemon._id == pokemonId)
-
-  return pokemon;
+  return treinador.pokemons.find(pokemon => {
+    return pokemon._id == pokemonId
+  })
 }
 
+const login = async (loginData) => {
+  const treinadorEncontrado = await treinadoresModel.findOne(
+    { email: loginData.email }
+  )
+
+  if (treinadorEncontrado) {
+    const senhaCorreta = bcrypt.compareSync(loginData.senha, treinadorEncontrado.senha)
+
+    if (senhaCorreta) {
+      const token = jwt.sign(
+        { email: treinadorEncontrado.email, id: treinadorEncontrado._id },
+        process.env.PRIVATE_KEY
+      )
+      return { auth: true, token };
+    } else {
+      throw new Error('Senha incorreta, prestenção parça')
+    }
+  } else {
+    throw new Error('Email não está cadastrado')
+  }
+}
 
 module.exports = {
   getAll,
@@ -91,5 +124,6 @@ module.exports = {
   treinarPokemon,
   getPokemons,
   updatePokemon,
-  getPokemon
+  getByPokemonId,
+  login
 }
