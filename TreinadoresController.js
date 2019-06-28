@@ -98,12 +98,12 @@ const login = async (loginData) => {
   )
 
   if (treinadorEncontrado) {
-    const senhaCorreta = bcrypt.compareSync(loginData.senha, treinadorEncontrado.senha)
+    const senhaCorreta = bcrypt.compareSync(loginData.senha, treinadorEncontrado.senha) //primeiro é a senha não criptografada e a segunda é a senha criptografada
 
     if (senhaCorreta) {
       const token = jwt.sign(
         { email: treinadorEncontrado.email, id: treinadorEncontrado._id },
-        process.env.PRIVATE_KEY
+        process.env.PRIVATE_KEY //pra gerar o token com base nesse segredo
       )
       return { auth: true, token };
     } else {
